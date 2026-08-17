@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stance Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#10151f;
+    --navy-2:#161d2b;
+    --clay:#a85d34;
+    --grass:#3c6e47;
+    --chalk:#f4f1e8;
+    --chalk-dim:#c9c6bc;
+    --safe:#4cae6d;
+    --foul:#d9483c;
+    --amber:#e0a531;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--navy);
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    overscroll-behavior:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .display{font-family:'Teko',sans-serif; letter-spacing:0.02em;}
+
+  #app{
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    max-width:720px;
+    margin:0 auto;
+    position:relative;
+  }
+
+  header{
+    padding:14px 18px 10px;
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    border-bottom:1px solid rgba(244,241,232,0.08);
+  }
+  header h1{
+    font-family:'Teko',sans-serif;
+    font-weight:600;
+    font-size:30px;
+    letter-spacing:0.03em;
+    margin:0;
+    color:var(--chalk);
+  }
+  header h1 span{color:var(--clay);}
+  header .sub{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.14em;
+    color:var(--chalk-dim);
+  }
+
+  #stage{
+    position:relative;
+    flex:1;
+    min-height:0;
+    background:#000;
+    overflow:hidden;
+  }
+  video, canvas{
+    position:absolute;
+    top:0;left:0;
+    width:100%;height:100%;
+    object-fit:cover;
+    transform:scaleX(-1); /* mirror front camera */
+  }
+  #overlay{ pointer-events:none; }
+
+  /* scoreboard verdict */
+  #verdict{
+    position:absolute;
+    top:12px; left:50%;
+    transform:translateX(-50%);
+    padding:6px 22px;
+    border-radius:6px;
+    background:rgba(16,21,31,0.82);
+    border:1px solid rgba(244,241,232,0.15);
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-family:'Teko',sans-serif;
+    font-size:26px;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    transition:border-color .2s ease;
+  }
+  #verdict .bulb{
+    width:14px;height:14px;border-radius:50%;
+    background:#555;
+    box-shadow:0 0 0px rgba(0,0,0,0);
+    transition:background .15s ease, box-shadow .15s ease;
+  }
+  #verdict.safe .bulb{ background:var(--safe); box-shadow:0 0 10px var(--safe); }
+  #verdict.foul .bulb{ background:var(--foul); box-shadow:0 0 10px var(--foul); }
+  #verdict.idle .bulb{ background:var(--amber); box-shadow:0 0 8px var(--amber); }
+
+  #noref{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    text-align:center; padding:0 30px;
+    color:var(--chalk-dim);
+    font-size:15px;
+    background:rgba(16,21,31,0.35);
+  }
+  #noref.hidden{ display:none; }
+
+  /* lineup card checklist */
+  #checklist{
+    padding:10px 16px 4px;
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:8px;
+  }
+  .chk{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:var(--navy-2);
+    border:1px solid rgba(244,241,232,0.08);
+    border-left:4px solid #555;
+    border-radius:4px;
+    padding:8px 10px;
+    font-size:12.5px;
+    line-height:1.25;
+  }
+  .chk .dot{
+    width:9px;height:9px;border-radius:50%;
+    background:#555;
+    flex:none;
+  }
+  .chk.ok{ border-left-color:var(--safe); }
+  .chk.ok .dot{ background:var(--safe); }
+  .chk.bad{ border-left-color:var(--foul); }
+  .chk.bad .dot{ background:var(--foul); }
+  .chk .label{ color:var(--chalk-dim); }
+  .chk.ok .label, .chk.bad .label{ color:var(--chalk); }
+
+  footer{
+    padding:12px 16px calc(14px + env(safe-area-inset-bottom));
+    display:flex;
+    gap:10px;
+  }
+  button{
+    flex:1;
+    font-family:'Teko',sans-serif;
+    font-size:20px;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    padding:12px 10px;
+    border-radius:6px;
+    border:1px solid rgba(244,241,232,0.15);
+    background:var(--navy-2);
+    color:var(--chalk);
+    cursor:pointer;
+  }
+  button.primary{
+    background:var(--clay);
+    border-color:var(--clay);
+    color:var(--chalk);
+  }
+  button:active{ filter:brightness(0.9); }
+  button:disabled{ opacity:0.4; }
+
+  #status{
+    position:absolute; bottom:8px; left:12px;
+    font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--chalk-dim); opacity:0.7;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div>
+      <h1>Stance<span>Check</span></h1>
+      <div class="sub" id="refState">no reference saved</div>
+    </div>
+    <div class="sub" id="clock"></div>
+  </header>
+
+  <div id="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div id="verdict" class="idle"><div class="bulb"></div><div id="verdictText">Loading model…</div></div>
+    <div id="noref">Line up the batter in the frame, then tap<br><strong>“Save This Stance”</strong> while he's standing correctly.</div>
+    <div id="status"></div>
+  </div>
+
+  <div id="checklist"></div>
+
+  <footer>
+    <button id="saveBtn" class="primary" disabled>Save This Stance</button>
+    <button id="clearBtn" disabled>Clear Reference</button>
+  </footer>
+</div>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const ctx = overlay.getContext('2d');
+const verdictEl = document.getElementById('verdict');
+const verdictText = document.getElementById('verdictText');
+const noref = document.getElementById('noref');
+const saveBtn = document.getElementById('saveBtn');
+const clearBtn = document.getElementById('clearBtn');
+const checklistEl = document.getElementById('checklist');
+const refStateEl = document.getElementById('refState');
+const statusEl = document.getElementById('status');
+const clockEl = document.getElementById('clock');
+
+setInterval(()=>{ clockEl.textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }, 1000*20);
+clockEl.textContent = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+
+let poseLandmarker;
+let running = false;
+let reference = null; // stored feature set
+const REF_KEY = 'stancecheck_reference_v1';
+
+// ---- Checks definition: id, label, tolerance ----
+const CHECKS = [
+  { id:'stanceWidth', label:'Foot width' },
+  { id:'frontKnee',   label:'Front knee bend' },
+  { id:'backKnee',    label:'Back knee bend' },
+  { id:'handHeight',  label:'Hand height' },
+  { id:'shoulderTilt',label:'Shoulder level' },
+  { id:'headOverHips',label:'Head over hips' },
+];
+const TOLERANCE = {
+  stanceWidth: 0.18,   // fraction of shoulder width, relative diff allowed
+  frontKnee: 14,       // degrees
+  backKnee: 14,
+  handHeight: 0.14,    // fraction of torso length
+  shoulderTilt: 9,      // degrees
+  headOverHips: 0.12,  // fraction of shoulder width
+};
+
+function angle(a,b,c){
+  // angle at point b, formed by a-b-c, in degrees
+  const v1 = {x:a.x-b.x, y:a.y-b.y};
+  const v2 = {x:c.x-b.x, y:c.y-b.y};
+  const dot = v1.x*v2.x + v1.y*v2.y;
+  const m1 = Math.hypot(v1.x,v1.y), m2 = Math.hypot(v2.x,v2.y);
+  if(m1===0||m2===0) return 0;
+  let cos = dot/(m1*m2);
+  cos = Math.max(-1,Math.min(1,cos));
+  return Math.acos(cos)*180/Math.PI;
+}
+
+// MediaPipe Pose landmark indices
+const L = {
+  NOSE:0, L_SHOULDER:11, R_SHOULDER:12, L_ELBOW:13, R_ELBOW:14,
+  L_WRIST:15, R_WRIST:16, L_HIP:23, R_HIP:24, L_KNEE:25, R_KNEE:26,
+  L_ANKLE:27, R_ANKLE:28
+};
+
+function extractFeatures(lm){
+  const ls = lm[L.L_SHOULDER], rs = lm[L.R_SHOULDER];
+  const lh = lm[L.L_HIP], rh = lm[L.R_HIP];
+  const lk = lm[L.L_KNEE], rk = lm[L.R_KNEE];
+  const la = lm[L.L_ANKLE], ra = lm[L.R_ANKLE];
+  const lw = lm[L.L_WRIST], rw = lm[L.R_WRIST];
+  const nose = lm[L.NOSE];
+
+  const shoulderWidth = Math.hypot(ls.x-rs.x, ls.y-rs.y) || 0.0001;
+  const shoulderMid = {x:(ls.x+rs.x)/2, y:(ls.y+rs.y)/2};
+  const hipMid = {x:(lh.x+rh.x)/2, y:(lh.y+rh.y)/2};
+  const torsoLen = Math.hypot(shoulderMid.x-hipMid.x, shoulderMid.y-hipMid.y) || 0.0001;
+
+  const stanceWidth = Math.hypot(la.x-ra.x, la.y-ra.y) / shoulderWidth;
+  const frontKnee = angle(lh, lk, la); // treat left as "front" — relative comparison only, not L/R specific
+  const backKnee = angle(rh, rk, ra);
+  const wristMidY = (lw.y+rw.y)/2;
+  const handHeight = (shoulderMid.y - wristMidY) / torsoLen; // positive = hands above shoulders
+  const shoulderTilt = Math.atan2(Math.abs(ls.y-rs.y), Math.abs(ls.x-rs.x)) * 180/Math.PI;
+  const headOverHips = (nose.x - hipMid.x) / shoulderWidth;
+
+  return { stanceWidth, frontKnee, backKnee, handHeight, shoulderTilt, headOverHips };
+}
+
+function compare(ref, cur){
+  const results = {};
+  let allOk = true;
+  for(const c of CHECKS){
+    const id = c.id;
+    let diff, ok;
+    if(id==='frontKnee' || id==='backKnee' || id==='shoulderTilt'){
+      diff = Math.abs(ref[id]-cur[id]);
+      ok = diff <= TOLERANCE[id];
+    } else {
+      diff = Math.abs(ref[id]-cur[id]);
+      ok = diff <= TOLERANCE[id];
+    }
+    results[id] = ok;
+    if(!ok) allOk = false;
+  }
+  return { results, allOk };
+}
+
+function renderChecklist(results){
+  checklistEl.innerHTML = '';
+  for(const c of CHECKS){
+    const div = document.createElement('div');
+    const state = results ? (results[c.id] ? 'ok':'bad') : '';
+    div.className = 'chk ' + state;
+    div.innerHTML = `<div class="dot"></div><div class="label">${c.label}</div>`;
+    checklistEl.appendChild(div);
+  }
+}
+renderChecklist(null);
+
+function setVerdict(mode, text){
+  verdictEl.className = mode;
+  verdictText.textContent = text;
+}
+
+function saveReference(features){
+  reference = features;
+  localStorage.setItem(REF_KEY, JSON.stringify(features));
+  refStateEl.textContent = 'reference saved';
+  clearBtn.disabled = false;
+  noref.classList.add('hidden');
+}
+function loadReference(){
+  const raw = localStorage.getItem(REF_KEY);
+  if(raw){
+    try{
+      reference = JSON.parse(raw);
+      refStateEl.textContent = 'reference saved';
+      clearBtn.disabled = false;
+      noref.classList.add('hidden');
+    }catch(e){}
+  }
+}
+loadReference();
+
+clearBtn.addEventListener('click', ()=>{
+  reference = null;
+  localStorage.removeItem(REF_KEY);
+  refStateEl.textContent = 'no reference saved';
+  clearBtn.disabled = true;
+  noref.classList.remove('hidden');
+  renderChecklist(null);
+  setVerdict('idle','Save a reference stance');
+});
+
+let lastFeatures = null;
+saveBtn.addEventListener('click', ()=>{
+  if(lastFeatures){
+    saveReference(lastFeatures);
+  }
+});
+
+async function setup(){
+  statusEl.textContent = 'starting camera…';
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:'user', width:{ideal:960}, height:{ideal:1280} },
+    audio:false
+  });
+  video.srcObject = stream;
+  await new Promise(r => video.onloadedmetadata = r);
+  video.play();
+  overlay.width = video.videoWidth;
+  overlay.height = video.videoHeight;
+
+  statusEl.textContent = 'loading pose model…';
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions:{
+      modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate:"GPU"
+    },
+    runningMode:"VIDEO",
+    numPoses:1
+  });
+
+  statusEl.textContent = '';
+  saveBtn.disabled = false;
+  setVerdict('idle', reference ? 'Get in position' : 'Save a reference stance');
+  running = true;
+  loop();
+}
+
+const drawer = new (class{})(); // placeholder, using manual draw below
+
+function drawSkeleton(landmarks){
+  ctx.clearRect(0,0,overlay.width, overlay.height);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(244,241,232,0.55)';
+  ctx.fillStyle = 'rgba(224,165,49,0.9)';
+  ctx.lineWidth = 3;
+  const pairs = [
+    [11,12],[11,13],[13,15],[12,14],[14,16],
+    [11,23],[12,24],[23,24],
+    [23,25],[25,27],[24,26],[26,28]
+  ];
+  for(const [a,b] of pairs){
+    const pa=landmarks[a], pb=landmarks[b];
+    ctx.beginPath();
+    ctx.moveTo(pa.x*overlay.width, pa.y*overlay.height);
+    ctx.lineTo(pb.x*overlay.width, pb.y*overlay.height);
+    ctx.stroke();
+  }
+  for(const idx of [0,11,12,13,14,15,16,23,24,25,26,27,28]){
+    const p = landmarks[idx];
+    ctx.beginPath();
+    ctx.arc(p.x*overlay.width, p.y*overlay.height, 5, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+let lastTime = -1;
+function loop(){
+  if(!running) return;
+  const now = performance.now();
+  if(video.readyState >= 2){
+    const result = poseLandmarker.detectForVideo(video, now);
+    if(result.landmarks && result.landmarks.length>0){
+      const lm = result.landmarks[0];
+      drawSkeleton(lm);
+      const features = extractFeatures(lm);
+      lastFeatures = features;
+      if(reference){
+        const { results, allOk } = compare(reference, features);
+        renderChecklist(results);
+        if(allOk){ setVerdict('safe','On Target'); }
+        else{ setVerdict('foul','Adjust Stance'); }
+      } else {
+        setVerdict('idle','Get in position, then Save');
+      }
+    } else {
+      ctx.clearRect(0,0,overlay.width, overlay.height);
+      setVerdict('idle','No player detected');
+      renderChecklist(reference ? {} : null);
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+setup().catch(err=>{
+  statusEl.textContent = 'Camera/model error: ' + err.message;
+  setVerdict('idle','Camera error — check permissions');
+  console.error(err);
+});
+
+window.addEventListener('resize', ()=>{
+  if(video.videoWidth){
+    overlay.width = video.videoWidth;
+    overlay.height = video.videoHeight;
+  }
+});
+</script>
+</body>
+</html>
